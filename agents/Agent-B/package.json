@@ -1,24 +1,14 @@
 {
-  "name": "yaki",
+  "name": "agent",
   "version": "1.0.0",
-  "description": "Your Discord server's prediction market",
+  "description": " ",
   "main": "dist/index.js",
   "type": "module",
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js",
     "dev": "ts-node src/index.ts"
-  },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/Kishore-MK/yaki.git"
-  },
-  "author": "Kishore-MK",
-  "license": "ISC",
-  "bugs": {
-    "url": "https://github.com/Kishore-MK/yaki/issues"
-  },
-  "homepage": "https://github.com/Kishore-MK/yaki#readme",
+  }, 
   "devDependencies": {
     "ts-node": "^10.9.2",
     "typescript": "^5.9.3"

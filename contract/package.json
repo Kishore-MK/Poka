@@ -1,7 +1,10 @@
 {
-  "name": "yaki",
+  "name": "poka",
   "version": "1.0.0",
   "type": "module",
+  "scripts": {
+    "test": "tsx scripts/test.ts"
+  },
   "devDependencies": {
     "@nomicfoundation/hardhat-ignition": "^3.0.3",
     "@nomicfoundation/hardhat-toolbox-viem": "^5.0.0",
@@ -12,6 +15,8 @@
     "viem": "^2.38.3"
   },
   "dependencies": {
-    "@openzeppelin/contracts": "^5.4.0"
+    "@openzeppelin/contracts": "^5.4.0",
+    "dotenv": "^17.2.3",
+    "tsx": "^4.20.6"
   }
 }

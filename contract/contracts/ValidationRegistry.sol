@@ -7,68 +7,56 @@ interface IIdentityRegistry {
 }
 
 /**
- * @title ReputationRegistry
- * @dev Registry for agent feedback and reputation management
+ * @title ValidationRegistry
+ * @dev Registry for agent validation requests and responses
  */
-contract ReputationRegistry {
-    struct FeedbackAuth {
+contract ValidationRegistry {
+    struct ValidationRequest {
         uint256 agentId;
-        address clientAddress;
-        uint64 indexLimit;
-        uint256 expiry;
-        uint256 chainId;
-        address identityRegistry;
-        address signerAddress;
-    }
-
-    struct Feedback {
-        uint8 score;
-        bytes32 tag1;
-        bytes32 tag2;
-        string uri;
-        bytes32 fileHash;
-        bool isRevoked;
-    }
-
-    struct Response {
-        string responseUri;
+        address validatorAddress;
+        string requestUri;
+        bytes32 requestHash;
+        bytes32 tag;
         uint256 timestamp;
+    }
+
+    struct ValidationStatus {
+        address validatorAddress;
+        uint256 agentId;
+        uint8 response;
+        bytes32 tag;
+        uint256 lastUpdate;
+        string responseUri;
+        bytes32 responseHash;
     }
 
     IIdentityRegistry public immutable identityRegistry;
 
-    // agentId => clientAddress => feedbackIndex => Feedback
-    mapping(uint256 => mapping(address => mapping(uint64 => Feedback))) private _feedback;
+    // requestHash => ValidationStatus
+    mapping(bytes32 => ValidationStatus) private _validationStatus;
     
-    // agentId => clientAddress => lastIndex
-    mapping(uint256 => mapping(address => uint64)) private _lastIndex;
+    // agentId => requestHashes[]
+    mapping(uint256 => bytes32[]) private _agentValidations;
     
-    // agentId => list of clients
-    mapping(uint256 => address[]) private _clients;
-    
-    // agentId => clientAddress => feedbackIndex => responderAddress => Response
-    mapping(uint256 => mapping(address => mapping(uint64 => mapping(address => Response)))) private _responses;
+    // validatorAddress => requestHashes[]
+    mapping(address => bytes32[]) private _validatorRequests;
 
-    event FeedbackGiven(
+    event ValidationRequested(
+        bytes32 indexed requestHash,
         uint256 indexed agentId,
-        address indexed clientAddress,
-        uint64 feedbackIndex,
-        uint8 score,
-        bytes32 tag1,
-        bytes32 tag2
+        address indexed validatorAddress,
+        string requestUri,
+        bytes32 tag
     );
 
-    event FeedbackRevoked(
+    event ValidationResponse(
+        bytes32 indexed requestHash,
+        address indexed validatorAddress,
         uint256 indexed agentId,
-        address indexed clientAddress,
-        uint64 feedbackIndex
-    );
-
-    event FeedbackResponse(
-        uint256 indexed agentId,
-        address indexed clientAddress,
-        uint64 feedbackIndex,
-        address indexed responder
+        uint8 response,
+        string responseUri,
+        bytes32 responseHash,
+        bytes32 tag
     );
 
     constructor(address _identityRegistry) {
@@ -76,164 +64,167 @@ contract ReputationRegistry {
     }
 
     /**
-     * @dev Give feedback to an agent
+     * @dev Request validation for agent work
      */
-    function giveFeedback(
+    function requestValidation(
         uint256 agentId,
-        FeedbackAuth calldata feedbackAuth,
-        uint8 score,
-        bytes32 tag1,
-        bytes32 tag2,
-        string calldata uri,
-        bytes32 fileHash
+        address validatorAddress,
+        string calldata requestUri,
+        bytes32 requestHash,
+        bytes32 tag
     ) external {
         require(identityRegistry.agentExists(agentId), "Agent does not exist");
-        require(score <= 100, "Score must be <= 100");
-        require(block.timestamp < feedbackAuth.expiry, "FeedbackAuth expired");
-        require(feedbackAuth.agentId == agentId, "AgentId mismatch");
-        require(feedbackAuth.clientAddress == msg.sender, "Client mismatch");
-        require(feedbackAuth.chainId == block.chainid, "ChainId mismatch");
-        require(feedbackAuth.identityRegistry == address(identityRegistry), "Registry mismatch");
+        require(
+            identityRegistry.ownerOf(agentId) == msg.sender,
+            "Not agent owner"
+        );
+        require(validatorAddress != address(0), "Invalid validator");
+        require(requestHash != bytes32(0), "Invalid request hash");
 
-        uint64 currentIndex = _lastIndex[agentId][msg.sender];
-        require(feedbackAuth.indexLimit > currentIndex, "IndexLimit too low");
-
-        // Verify signature (simplified - should use EIP-191/ERC-1271)
-        // In production, verify feedbackAuth signature here
-
-        uint64 newIndex = currentIndex + 1;
-        _lastIndex[agentId][msg.sender] = newIndex;
-
-        if (currentIndex == 0) {
-            _clients[agentId].push(msg.sender);
-        }
-
-        _feedback[agentId][msg.sender][newIndex] = Feedback({
-            score: score,
-            tag1: tag1,
-            tag2: tag2,
-            uri: uri,
-            fileHash: fileHash,
-            isRevoked: false
+        _validationStatus[requestHash] = ValidationStatus({
+            validatorAddress: validatorAddress,
+            agentId: agentId,
+            response: 0,
+            tag: tag,
+            lastUpdate: block.timestamp,
+            responseUri: "",
+            responseHash: bytes32(0)
         });
 
-        emit FeedbackGiven(agentId, msg.sender, newIndex, score, tag1, tag2);
+        _agentValidations[agentId].push(requestHash);
+        _validatorRequests[validatorAddress].push(requestHash);
+
+        emit ValidationRequested(
+            requestHash,
+            agentId,
+            validatorAddress,
+            requestUri,
+            tag
+        );
     }
 
     /**
-     * @dev Revoke feedback
+     * @dev Submit validation response (only by assigned validator)
      */
-    function revokeFeedback(uint256 agentId, uint64 feedbackIndex) external {
-        require(_feedback[agentId][msg.sender][feedbackIndex].score > 0, "Feedback does not exist");
-        require(!_feedback[agentId][msg.sender][feedbackIndex].isRevoked, "Already revoked");
-
-        _feedback[agentId][msg.sender][feedbackIndex].isRevoked = true;
-        emit FeedbackRevoked(agentId, msg.sender, feedbackIndex);
-    }
-
-    /**
-     * @dev Respond to feedback
-     */
-    function respondToFeedback(
-        uint256 agentId,
-        address clientAddress,
-        uint64 feedbackIndex,
-        string calldata responseUri
+    function validationResponse(
+        bytes32 requestHash,
+        uint8 response,
+        string calldata responseUri,
+        bytes32 responseHash,
+        bytes32 tag
     ) external {
-        require(_feedback[agentId][clientAddress][feedbackIndex].score > 0, "Feedback does not exist");
+        ValidationStatus storage status = _validationStatus[requestHash];
+        require(status.validatorAddress == msg.sender, "Not assigned validator");
+        require(status.agentId != 0, "Validation request does not exist");
+        require(response <= 100, "Response must be <= 100");
 
-        _responses[agentId][clientAddress][feedbackIndex][msg.sender] = Response({
-            responseUri: responseUri,
-            timestamp: block.timestamp
-        });
+        status.response = response;
+        status.responseUri = responseUri;
+        status.responseHash = responseHash;
+        status.tag = tag;
+        status.lastUpdate = block.timestamp;
 
-        emit FeedbackResponse(agentId, clientAddress, feedbackIndex, msg.sender);
+        emit ValidationResponse(
+            requestHash,
+            msg.sender,
+            status.agentId,
+            response,
+            responseUri,
+            responseHash,
+            tag
+        );
     }
 
     /**
-     * @dev Get summary statistics for an agent
+     * @dev Get validation status for a request
+     */
+    function getValidationStatus(bytes32 requestHash)
+        external
+        view
+        returns (
+            address validatorAddress,
+            uint256 agentId,
+            uint8 response,
+            bytes32 tag,
+            uint256 lastUpdate
+        )
+    {
+        ValidationStatus memory status = _validationStatus[requestHash];
+        return (
+            status.validatorAddress,
+            status.agentId,
+            status.response,
+            status.tag,
+            status.lastUpdate
+        );
+    }
+
+    /**
+     * @dev Get summary statistics for agent validations
      */
     function getSummary(
         uint256 agentId,
-        address[] calldata clientAddresses,
-        bytes32 tag1,
-        bytes32 tag2
-    ) external view returns (uint64 count, uint8 averageScore) {
-        address[] memory clients;
-        if( clientAddresses.length > 0){
-            clients = clientAddresses;
-        } else {
-             clients = _clients[agentId];
-        }
-        uint256 totalScore = 0;
+        address[] calldata validatorAddresses,
+        bytes32 tag
+    ) external view returns (uint64 count, uint8 avgResponse) {
+        bytes32[] memory requests = _agentValidations[agentId];
+        uint256 totalResponse = 0;
         count = 0;
 
-        for (uint256 i = 0; i < clients.length; i++) {
-            uint64 lastIdx = _lastIndex[agentId][clients[i]];
+        for (uint256 i = 0; i < requests.length; i++) {
+            ValidationStatus memory status = _validationStatus[requests[i]];
             
-            for (uint64 j = 1; j <= lastIdx; j++) {
-                Feedback memory fb = _feedback[agentId][clients[i]][j];
-                
-                if (fb.isRevoked) continue;
-                if (tag1 != bytes32(0) && fb.tag1 != tag1) continue;
-                if (tag2 != bytes32(0) && fb.tag2 != tag2) continue;
-
-                totalScore += fb.score;
-                count++;
+            // Skip if no response yet
+            if (status.lastUpdate == 0 || status.response == 0) continue;
+            
+            // Filter by validator if specified
+            if (validatorAddresses.length > 0) {
+                bool validatorMatch = false;
+                for (uint256 j = 0; j < validatorAddresses.length; j++) {
+                    if (status.validatorAddress == validatorAddresses[j]) {
+                        validatorMatch = true;
+                        break;
+                    }
+                }
+                if (!validatorMatch) continue;
             }
+            
+            // Filter by tag if specified
+            if (tag != bytes32(0) && status.tag != tag) continue;
+
+            totalResponse += status.response;
+            count++;
         }
 
-        averageScore = count > 0 ? uint8(totalScore / count) : 0;
+        avgResponse = count > 0 ? uint8(totalResponse / count) : 0;
     }
 
     /**
-     * @dev Read specific feedback
+     * @dev Get all validation requests for an agent
      */
-    function readFeedback(
-        uint256 agentId,
-        address clientAddress,
-        uint64 index
-    ) external view returns (
-        uint8 score,
-        bytes32 tag1,
-        bytes32 tag2,
-        bool isRevoked
-    ) {
-        Feedback memory fb = _feedback[agentId][clientAddress][index];
-        return (fb.score, fb.tag1, fb.tag2, fb.isRevoked);
+    function getAgentValidations(uint256 agentId)
+        external
+        view
+        returns (bytes32[] memory)
+    {
+        return _agentValidations[agentId];
     }
 
     /**
-     * @dev Get all clients who gave feedback
+     * @dev Get all validation requests assigned to a validator
      */
-    function getClients(uint256 agentId) external view returns (address[] memory) {
-        return _clients[agentId];
+    function getValidatorRequests(address validatorAddress)
+        external
+        view
+        returns (bytes32[] memory)
+    {
+        return _validatorRequests[validatorAddress];
     }
 
     /**
-     * @dev Get last feedback index for a client
+     * @dev Get identity registry address
      */
-    function getLastIndex(uint256 agentId, address clientAddress) external view returns (uint64) {
-        return _lastIndex[agentId][clientAddress];
-    }
-
-    /**
-     * @dev Get response count for feedback
-     */
-    function getResponseCount(
-        uint256 agentId,
-        address clientAddress,
-        uint64 feedbackIndex,
-        address[] calldata responders
-    ) external view returns (uint64) {
-        if (responders.length == 0) return 0;
-        
-        uint64 count = 0;
-        for (uint256 i = 0; i < responders.length; i++) {
-            if (_responses[agentId][clientAddress][feedbackIndex][responders[i]].timestamp > 0) {
-                count++;
-            }
-        }
-        return count;
+    function getIdentityRegistry() external view returns (address) {
+        return address(identityRegistry);
     }
 }
