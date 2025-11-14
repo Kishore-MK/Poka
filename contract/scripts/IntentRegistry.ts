@@ -1,5 +1,4 @@
-export const intentCoordinatorAbi=
-[
+export const intentRegistryAbi =  [
     {
       "inputs": [
         {
