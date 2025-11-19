@@ -17,11 +17,9 @@ const app = new Hono();
 app.use('/*', cors());
 
 // Agent capabilities endpoint
-app.get('/capabilities', (c) => {
+app.get('/', (c) => {
   const capabilities = {
-    agentId: agentStorage.getMyAgentId()?.toString() || 'Not registered',
-    name: process.env.AGENT_NAME || 'AI Agent',
-    description: process.env.AGENT_DESCRIPTION || 'An AI agent',
+    agentId: agentStorage.getMyAgentId()?.toString() || 'Not registered', 
     actions: [
       {
         name: 'calculate',
