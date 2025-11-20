@@ -26,3 +26,22 @@ export const CONTRACT_ADDRESSES = {
     ReputationRegistry: process.env.NEXT_PUBLIC_REPUTATION_REGISTRY_ADDRESS as `0x${string}`,
     ValidationRegistry: process.env.NEXT_PUBLIC_VALIDATION_REGISTRY_ADDRESS as `0x${string}`,
 };
+
+export const IDENTITY_REGISTRY_ABI = [
+    {
+        inputs: [{ name: 'agentId', type: 'uint256' }],
+        name: 'getMetadata',
+        outputs: [
+            {
+                components: [
+                    { name: 'key', type: 'string' },
+                    { name: 'value', type: 'bytes' }
+                ],
+                name: '',
+                type: 'tuple[]'
+            }
+        ],
+        stateMutability: 'view',
+        type: 'function'
+    }
+] as const;

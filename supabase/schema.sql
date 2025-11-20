@@ -3,6 +3,9 @@ CREATE TABLE IF NOT EXISTS agents (
     id BIGINT PRIMARY KEY,
     owner TEXT NOT NULL,
     token_uri TEXT,
+    name TEXT,
+    description TEXT,
+    domain TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 

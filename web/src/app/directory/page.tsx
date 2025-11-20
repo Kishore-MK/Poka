@@ -12,24 +12,21 @@ async function getAgents() {
       validations (count)
     `)
     .order('created_at', { ascending: false });
-
+      
+      
   return agents?.map((agent: any) => {
     // Calculate avg score
     const scores = agent.feedback?.map((f: any) => f.score) || [];
-    const avgScore = scores.length > 0 
-      ? Math.round(scores.reduce((a: number, b: number) => a + b, 0) / scores.length) 
+    const avgScore = scores.length > 0
+      ? Math.round(scores.reduce((a: number, b: number) => a + b, 0) / scores.length)
       : 0;
-
-    // Parse metadata from token_uri if possible, or use placeholder
-    // For now, we'll just use the ID as name if metadata isn't fetched/stored separately
-    // Ideally, the indexer would fetch IPFS metadata and store it in columns.
-    // We'll assume 'token_uri' might contain a name or we just show ID.
-    
+      
     return {
       id: agent.id,
       owner: agent.owner,
-      name: `Agent #${agent.id}`, // Placeholder until metadata is indexed properly
-      description: 'Autonomous agent registered on Poka.',
+      name: agent.name || `Agent #${agent.id}`,
+      description: agent.description || 'Autonomous agent registered on Poka.',
+      tokenURI: agent.token_uri,
       reputationScore: avgScore,
       validationCount: agent.validations?.[0]?.count || 0,
     };
@@ -47,9 +44,9 @@ export default async function DirectoryPage() {
           <p className="text-gray-400">Discover and verify autonomous agents.</p>
         </div>
         <div className="flex gap-4">
-          <input 
-            type="text" 
-            placeholder="Search agents..." 
+          <input
+            type="text"
+            placeholder="Search agents..."
             className="bg-slate-900 border border-slate-800 rounded-full px-6 py-2 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:border-white focus:ring-1 focus:ring-white transition-all w-64 shadow-sm"
           />
         </div>

@@ -1,4 +1,4 @@
-import { createPublicClient, http, parseAbiItem, Log } from 'viem';
+import { createPublicClient, http, parseAbiItem, Log, hexToString } from 'viem';
 import { defineChain } from 'viem/utils';
 import { createClient } from '@supabase/supabase-js';
 import * as dotenv from 'dotenv';
@@ -85,6 +85,32 @@ async function handleAgentRegistered(logs: Log[]) {
             .upsert({ id: agentId, owner, token_uri: tokenUri }, { onConflict: 'id' });
 
         if (error) console.error('Supabase error (agents):', error);
+    }
+}
+
+async function handleMetadataSet(logs: Log[]) {
+    for (const log of logs) {
+        const { args } = log as any;
+        const agentId = args.agentId.toString();
+        const key = args.key;
+        const value = args.value;
+
+        console.log(`Processing MetadataSet: ID ${agentId}, Key ${key}`);
+
+        try {
+            const strValue = hexToString(value);
+
+            if (key === 'name' || key === 'description' || key === 'domain') {
+                const { error } = await supabase
+                    .from('agents')
+                    .update({ [key]: strValue })
+                    .eq('id', agentId);
+
+                if (error) console.error(`Supabase error (agents update ${key}):`, error);
+            }
+        } catch (e) {
+            console.error(`Failed to process metadata for agent ${agentId}`, e);
+        }
     }
 }
 
@@ -214,8 +240,50 @@ async function main() {
                 args: [BigInt(agentId)],
             }) as string;
 
-            console.log(`Found Agent ${agentId}`);
-            await supabase.from('agents').upsert({ id: agentId, owner, token_uri: tokenUri }, { onConflict: 'id' });
+            // Fetch Metadata (Name & Description)
+            let name = '';
+            let description = '';
+            let domain = '';
+
+            try {
+                const nameBytes = await client.readContract({
+                    address: IDENTITY_REGISTRY_ADDRESS,
+                    abi: identityAbi,
+                    functionName: 'getMetadata',
+                    args: [BigInt(agentId), 'name'],
+                }) as `0x${string}`;
+                name = hexToString(nameBytes);
+            } catch (e) { }
+
+            try {
+                const descBytes = await client.readContract({
+                    address: IDENTITY_REGISTRY_ADDRESS,
+                    abi: identityAbi,
+                    functionName: 'getMetadata',
+                    args: [BigInt(agentId), 'description'],
+                }) as `0x${string}`;
+                description = hexToString(descBytes);
+            } catch (e) { }
+
+            try {
+                const domainBytes = await client.readContract({
+                    address: IDENTITY_REGISTRY_ADDRESS,
+                    abi: identityAbi,
+                    functionName: 'getMetadata',
+                    args: [BigInt(agentId), 'domain'],
+                }) as `0x${string}`;
+                domain = hexToString(domainBytes);
+            } catch (e) { }
+
+            console.log(`Found Agent ${agentId}: ${name}`);
+            await supabase.from('agents').upsert({
+                id: agentId,
+                owner,
+                token_uri: tokenUri,
+                name,
+                description,
+                domain
+            }, { onConflict: 'id' });
 
             agentId++;
         } catch (e) {
@@ -232,6 +300,13 @@ async function main() {
         abi: identityAbi,
         eventName: 'AgentRegistered',
         onLogs: handleAgentRegistered,
+    });
+
+    client.watchContractEvent({
+        address: IDENTITY_REGISTRY_ADDRESS,
+        abi: identityAbi,
+        eventName: 'MetadataSet',
+        onLogs: handleMetadataSet,
     });
 
     client.watchContractEvent({

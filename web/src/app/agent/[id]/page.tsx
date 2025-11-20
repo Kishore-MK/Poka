@@ -2,6 +2,7 @@ import { supabase } from '@/lib/supabase';
 import { FeedbackList } from '@/components/FeedbackList';
 import { Star, ShieldCheck, Globe, User } from 'lucide-react';
 import { notFound } from 'next/navigation';
+import Image from 'next/image';
 
 export const revalidate = 0;
 
@@ -20,8 +21,8 @@ async function getAgentDetails(id: string) {
 
   // Calculate avg score
   const scores = agent.feedback?.map((f: any) => f.score) || [];
-  const avgScore = scores.length > 0 
-    ? Math.round(scores.reduce((a: number, b: number) => a + b, 0) / scores.length) 
+  const avgScore = scores.length > 0
+    ? Math.round(scores.reduce((a: number, b: number) => a + b, 0) / scores.length)
     : 0;
 
   return {
@@ -43,26 +44,28 @@ export default async function AgentDetailsPage({ params }: { params: { id: strin
       <div className="card-3d p-8 rounded-3xl mb-8">
         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
           <div className="flex items-center gap-6">
-            <div className="w-24 h-24 rounded-full bg-slate-900 border border-white/10 flex items-center justify-center text-4xl font-bold text-white shadow-2xl">
-              {agent.id}
-            </div>
+
+            <Image src={agent.token_uri} alt="Agent" width={600} height={600}  className="w-24 h-24 rounded-full" />
+
             <div>
-              <h1 className="text-3xl font-bold text-white mb-2 text-3d">Agent #{agent.id}</h1>
+              <h1 className="text-3xl font-bold text-white mb-2 text-3d">{agent.name} <a href={agent.token_uri} className='hover:underline' target="_blank" rel="noopener noreferrer">#{agent.id}</a></h1>
               <div className="flex items-center gap-4 text-sm text-slate-400">
                 <div className="flex items-center gap-1">
                   <User className="w-4 h-4" />
                   <span className="font-mono">{agent.owner}</span>
                 </div>
-                {agent.token_uri && (
+                {agent.domain && (
                   <div className="flex items-center gap-1">
                     <Globe className="w-4 h-4" />
-                    <a href={agent.token_uri} target="_blank" rel="noopener noreferrer" className="hover:text-indigo-400 transition-colors">
-                      Metadata URI
+                    <a href={agent.domain} target="_blank" rel="noopener noreferrer" className="hover:text-indigo-400 transition-colors">
+                      Domain
                     </a>
                   </div>
                 )}
               </div>
+
             </div>
+
           </div>
 
           <div className="flex items-center gap-6">
@@ -105,9 +108,8 @@ export default async function AgentDetailsPage({ params }: { params: { id: strin
               {agent.validations?.map((val: any) => (
                 <div key={val.request_hash} className="flex items-center justify-between text-sm">
                   <span className="text-slate-400 font-mono">{val.request_hash.slice(0, 8)}...</span>
-                  <span className={`px-2 py-1 rounded-full text-xs ${
-                    val.status === 'Responded' ? 'bg-indigo-500/20 text-indigo-300' : 'bg-slate-700/50 text-slate-400'
-                  }`}>
+                  <span className={`px-2 py-1 rounded-full text-xs ${val.status === 'Responded' ? 'bg-indigo-500/20 text-indigo-300' : 'bg-slate-700/50 text-slate-400'
+                    }`}>
                     {val.status}
                   </span>
                 </div>
