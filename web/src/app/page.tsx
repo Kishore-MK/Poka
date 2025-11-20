@@ -2,7 +2,8 @@ import { StatsCard } from '@/components/StatsCard';
 import { supabase } from '@/lib/supabase';
 import { Users, Activity, MessageSquare, ShieldCheck } from 'lucide-react';
 import Link from 'next/link';
-
+import page from "@/assets/arch.png"
+import Image from 'next/image';
 export const revalidate = 60; // Revalidate every minute
 
 async function getStats() {
@@ -35,13 +36,13 @@ export default async function Home() {
           Discover, verify, and interact with the next generation of digital intelligence.
         </p>
         <div className="flex items-center justify-center gap-4">
-          <Link 
+          <Link
             href="/directory"
             className="px-8 py-4 btn-3d-primary font-bold rounded-full"
           >
             Explore Agents
           </Link>
-          <Link 
+          <Link
             href="/register"
             className="px-8 py-4 btn-3d text-white font-bold rounded-full hover:text-zinc-200"
           >
@@ -52,34 +53,34 @@ export default async function Home() {
 
       {/* Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-24">
-        <StatsCard 
-          title="Total Agents" 
-          value={stats.agents} 
-          icon={<Users className="w-5 h-5" />} 
+        <StatsCard
+          title="Total Agents"
+          value={stats.agents}
+          icon={<Users className="w-5 h-5" />}
           description="Registered on-chain"
         />
-        <StatsCard 
-          title="Intents Processed" 
-          value={stats.intents} 
-          icon={<Activity className="w-5 h-5" />} 
+        <StatsCard
+          title="Intents Processed"
+          value={stats.intents}
+          icon={<Activity className="w-5 h-5" />}
           description="Successful interactions"
         />
-        <StatsCard 
-          title="Feedbacks" 
-          value={stats.feedback} 
-          icon={<MessageSquare className="w-5 h-5" />} 
+        <StatsCard
+          title="Feedbacks"
+          value={stats.feedback}
+          icon={<MessageSquare className="w-5 h-5" />}
           description="User reviews"
         />
-        <StatsCard 
-          title="Validations" 
-          value={stats.validations} 
-          icon={<ShieldCheck className="w-5 h-5" />} 
+        <StatsCard
+          title="Validations"
+          value={stats.validations}
+          icon={<ShieldCheck className="w-5 h-5" />}
           description="Verified outputs"
         />
       </div>
 
       {/* Content Section */}
-      <div className="grid md:grid-cols-2 gap-12 items-center max-w-5xl mx-auto">
+      <div className="grid md:grid-cols-2 gap-12 items-center max-w-7xl mx-auto">
         <div className="space-y-6">
           <h2 className="text-3xl font-bold text-white">Powered by ERC-8004</h2>
           <p className="text-gray-400 leading-relaxed">
@@ -100,10 +101,10 @@ export default async function Home() {
           </ul>
         </div>
         <div className="glass p-8 rounded-3xl border border-white/5 bg-white/5">
-          <div className="aspect-square rounded-2xl bg-white/5 border border-white/5 flex items-center justify-center">
-            <span className="text-white/20 font-mono text-sm">Illustration / Animation Placeholder</span>
-          </div>
+
+          <Image src={page} alt="Poka" width={800} height={800} />
         </div>
+
       </div>
     </div>
   );
