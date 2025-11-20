@@ -3,6 +3,7 @@ import { FeedbackList } from '@/components/FeedbackList';
 import { Star, ShieldCheck, Globe, User } from 'lucide-react';
 import { notFound } from 'next/navigation';
 import Image from 'next/image';
+import { AgentActions } from '@/components/AgentActions';
 
 export const revalidate = 0;
 
@@ -45,7 +46,7 @@ export default async function AgentDetailsPage({ params }: { params: { id: strin
         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
           <div className="flex items-center gap-6">
 
-            <Image src={agent.token_uri} alt="Agent" width={600} height={600}  className="w-24 h-24 rounded-full" />
+            <Image src={agent.token_uri} alt="Agent" width={600} height={600} className="w-24 h-24 rounded-full" />
 
             <div>
               <h1 className="text-3xl font-bold text-white mb-2 text-3d">{agent.name} <a href={agent.token_uri} className='hover:underline' target="_blank" rel="noopener noreferrer">#{agent.id}</a></h1>
@@ -102,6 +103,14 @@ export default async function AgentDetailsPage({ params }: { params: { id: strin
 
         {/* Sidebar */}
         <div className="space-y-6">
+          <AgentActions
+            agentId={agent.id}
+            ownerAddress={agent.owner}
+            currentName={agent.name}
+            currentDescription={agent.description}
+            currentDomain={agent.domain || ''}
+          />
+
           <div className="card-3d p-6 rounded-2xl">
             <h3 className="text-lg font-bold text-white mb-4">Validation History</h3>
             <div className="space-y-4">

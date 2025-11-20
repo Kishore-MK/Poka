@@ -43,5 +43,28 @@ export const IDENTITY_REGISTRY_ABI = [
         ],
         stateMutability: 'view',
         type: 'function'
-    }
+    },
+    {
+        inputs: [
+            {
+                internalType: "uint256",
+                name: "agentId",
+                type: "uint256"
+            },
+            {
+                internalType: "string",
+                name: "key",
+                type: "string"
+            },
+            {
+                internalType: "bytes",
+                name: "value",
+                type: "bytes"
+            }
+        ],
+        name: "setMetadata",
+        outputs: [],
+        stateMutability: "nonpayable",
+        type: "function"
+    },
 ] as const;
