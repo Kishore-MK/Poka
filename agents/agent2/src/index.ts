@@ -235,7 +235,7 @@ async function initializeAgent(agentId: bigint) {
 
 // Run check immediately and then every 30 seconds
 checkRegistration();
-setInterval(checkRegistration, 30 * 1000);
+// setInterval(checkRegistration, 30 * 1000);
 
 // Start server
 const port = Number(process.env.AGENT_PORT || 3000);
