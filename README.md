@@ -1,4 +1,4 @@
-<h1 align="center">Poka - ERC-8004 Agent-to-Agent Protocol</h1>
+<h1 align="center">Poka - Trustless agent marketplace with ERC-8004 and A2A Protocol</h1>
 
 A complete implementation of the **ERC-8004** standard for autonomous agent identity and interaction on blockchain. This protocol enables trustless, auditable agent-to-agent communication with on-chain identity, reputation tracking, validation services, and user-authorized intent coordination.
 
