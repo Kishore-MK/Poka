@@ -1,7 +1,9 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { Send, Bot, User, Loader2, Wrench, Activity, ChevronDown, ChevronUp, CheckCircle, XCircle, Clock, ExternalLink } from 'lucide-react';
+import { Send, Bot, User, Loader2, Wrench, Activity, ChevronDown, ChevronUp, CheckCircle, XCircle, Clock, ExternalLink, Trash2 } from 'lucide-react';
+import { createWalletClient, custom } from 'viem';
+import { customChain, CONTRACT_ADDRESSES, INTENT_COORDINATOR_ABI } from '@/lib/chain';
 
 interface Message {
     role: 'user' | 'agent';
@@ -29,6 +31,9 @@ export function ChatInterface({ agentUrl, agentName }: ChatInterfaceProps) {
     const [intents, setIntents] = useState<Intent[]>([]);
     const [showIntents, setShowIntents] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
+    const [connectedAddress, setConnectedAddress] = useState<string | null>(null);
+    const [revokingIntent, setRevokingIntent] = useState<string | null>(null);
+    const [revokeError, setRevokeError] = useState<string | null>(null);
 
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -37,6 +42,73 @@ export function ChatInterface({ agentUrl, agentName }: ChatInterfaceProps) {
     useEffect(() => {
         scrollToBottom();
     }, [messages]);
+
+
+    useEffect(() => {
+        async function connectWallet() {
+            const walletClient = createWalletClient({
+                chain: customChain,
+                transport: custom(window.ethereum)
+            });
+
+            const [address] = await walletClient.getAddresses();
+            setConnectedAddress(address || null);
+        }
+        connectWallet();
+    }, []);
+
+    const handleRevokeIntent = async (intentId: string) => {
+        if (!connectedAddress) {
+            setRevokeError('Please connect your wallet first');
+            setTimeout(() => setRevokeError(null), 3000);
+            return;
+        }
+
+        setRevokingIntent(intentId);
+        setRevokeError(null);
+
+        try {
+            const walletClient = createWalletClient({
+                chain: customChain,
+                transport: custom(window.ethereum)
+            });
+
+            // Call revokeIntent on the contract
+            const hash = await walletClient.writeContract({
+                address: CONTRACT_ADDRESSES.IntentRegistry,
+                abi: INTENT_COORDINATOR_ABI,
+                functionName: 'revokeIntent',
+                args: [intentId as `0x${string}`],
+                account: connectedAddress as `0x${string}`,
+            });
+
+            console.log('Revoke transaction submitted:', hash);
+
+            // Refresh intents after a short delay
+            setTimeout(() => {
+                fetchIntents();
+            }, 2000);
+
+        } catch (error: any) {
+            console.error('Failed to revoke intent:', error);
+            let errorMessage = 'Failed to revoke intent';
+
+            if (error.message?.includes('User rejected')) {
+                errorMessage = 'Transaction rejected';
+            } else if (error.message?.includes('Cannot revoke - locked')) {
+                errorMessage = 'Intent is locked by agent';
+            } else if (error.message?.includes('Intent not pending')) {
+                errorMessage = 'Intent is not pending';
+            } else if (error.message?.includes('Not intent creator')) {
+                errorMessage = 'You are not the creator';
+            }
+
+            setRevokeError(errorMessage);
+            setTimeout(() => setRevokeError(null), 5000);
+        } finally {
+            setRevokingIntent(null);
+        }
+    };
 
     const fetchIntents = async () => {
         try {
@@ -70,13 +142,14 @@ export function ChatInterface({ agentUrl, agentName }: ChatInterfaceProps) {
         try {
             // Ensure URL doesn't have trailing slash
             const baseUrl = agentUrl.replace(/\/$/, '');
+            console.log("User Address: ", connectedAddress);
 
             const response = await fetch(`${baseUrl}/chat`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({ message: userMessage }),
+                body: JSON.stringify({ message: userMessage, userAddress: connectedAddress }),
             });
 
             if (!response.ok) {
@@ -86,11 +159,73 @@ export function ChatInterface({ agentUrl, agentName }: ChatInterfaceProps) {
 
             const data = await response.json();
 
-            setMessages(prev => [...prev, {
-                role: 'agent',
-                content: data.response,
-                toolCalls: data.toolCalls?.map((tc: any) => tc.name)
-            }]);
+            // Check if there's a signature request
+            if (data.signatureRequest) {
+                const sigReq = data.signatureRequest;
+
+                // Add agent message about signature request
+                setMessages(prev => [...prev, {
+                    role: 'agent',
+                    content: `I need your signature to create an intent. Please sign the message in your wallet.`,
+                    toolCalls: data.toolCalls?.map((tc: any) => tc.name)
+                }]);
+
+                try {
+                    // Create wallet client for signing
+                    const walletClient = createWalletClient({
+                        chain: customChain,
+                        transport: custom(window.ethereum)
+                    });
+
+                    // Sign the message hash using personal sign
+                    const signature = await walletClient.signMessage({
+                        account: connectedAddress as `0x${string}`,
+                        message: { raw: sigReq.messageHash as `0x${string}` }
+                    });
+
+                    console.log("Signature obtained:", signature);
+
+                    // Send the signature back to the agent
+                    const submitMessage = `Submit the signed intent with signature: ${signature}, creatorAgentId: ${sigReq.creatorAgentId}, targetAgentId: ${sigReq.targetAgentId}, expiresAt: ${sigReq.expiresAt}, userAddress: ${sigReq.userAddress}, nonce: ${sigReq.nonce}`;
+
+                    const submitResponse = await fetch(`${baseUrl}/chat`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            message: submitMessage,
+                            userAddress: connectedAddress
+                        }),
+                    });
+
+                    if (!submitResponse.ok) {
+                        throw new Error('Failed to submit signed intent');
+                    }
+
+                    const submitData = await submitResponse.json();
+
+                    setMessages(prev => [...prev, {
+                        role: 'agent',
+                        content: submitData.response,
+                        toolCalls: submitData.toolCalls?.map((tc: any) => tc.name)
+                    }]);
+
+                } catch (signError: any) {
+                    console.error('Signature error:', signError);
+                    setMessages(prev => [...prev, {
+                        role: 'agent',
+                        content: `Failed to get signature: ${signError.message || 'User rejected signature request'}`
+                    }]);
+                }
+            } else {
+                // Normal response without signature request
+                setMessages(prev => [...prev, {
+                    role: 'agent',
+                    content: data.response,
+                    toolCalls: data.toolCalls?.map((tc: any) => tc.name)
+                }]);
+            }
 
             // Refresh intents after a message
             fetchIntents();
@@ -136,8 +271,8 @@ export function ChatInterface({ agentUrl, agentName }: ChatInterfaceProps) {
 
                         <div className={`max-w-[80%] space-y-2`}>
                             <div className={`p-4 rounded-2xl ${msg.role === 'user'
-                                    ? 'bg-blue-600 text-white rounded-tr-none'
-                                    : 'bg-slate-800/80 text-slate-200 rounded-tl-none border border-white/10'
+                                ? 'bg-blue-600 text-white rounded-tr-none'
+                                : 'bg-slate-800/80 text-slate-200 rounded-tl-none border border-white/10'
                                 }`}>
                                 <p className="whitespace-pre-wrap leading-relaxed">{msg.content}</p>
                             </div>
@@ -219,19 +354,45 @@ export function ChatInterface({ agentUrl, agentName }: ChatInterfaceProps) {
                                     {JSON.stringify(intent.result, null, 2)}
                                 </div>
 
-                                {intent.transactionHash && (
-                                    <a
-                                        href={`https://hashscan.io/testnet/transaction/${intent.transactionHash}`}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="flex items-center gap-1 text-xs text-indigo-400 hover:text-indigo-300 transition-colors"
+                                <div className="flex items-center justify-between">
+                                    {intent.transactionHash && (
+                                        <a
+                                            href={`https://hashscan.io/testnet/transaction/${intent.transactionHash}`}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="flex items-center gap-1 text-xs text-indigo-400 hover:text-indigo-300 transition-colors"
+                                        >
+                                            <ExternalLink className="w-3 h-3" />
+                                            View Transaction
+                                        </a>
+                                    )}
+
+                                    <button
+                                        onClick={() => handleRevokeIntent(intent.intentId)}
+                                        disabled={revokingIntent === intent.intentId}
+                                        className="flex items-center gap-1 text-xs text-red-400 hover:text-red-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed ml-auto"
                                     >
-                                        <ExternalLink className="w-3 h-3" />
-                                        View Transaction
-                                    </a>
-                                )}
+                                        {revokingIntent === intent.intentId ? (
+                                            <>
+                                                <Loader2 className="w-3 h-3 animate-spin" />
+                                                Revoking...
+                                            </>
+                                        ) : (
+                                            <>
+                                                <Trash2 className="w-3 h-3" />
+                                                Revoke
+                                            </>
+                                        )}
+                                    </button>
+                                </div>
                             </div>
                         ))}
+
+                        {revokeError && (
+                            <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 text-sm text-red-400">
+                                {revokeError}
+                            </div>
+                        )}
                     </div>
                 )}
             </div>

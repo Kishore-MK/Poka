@@ -68,3 +68,48 @@ export const IDENTITY_REGISTRY_ABI = [
         type: "function"
     },
 ] as const;
+
+export const INTENT_COORDINATOR_ABI = [
+    {
+        inputs: [
+            {
+                internalType: "bytes32",
+                name: "intentId",
+                type: "bytes32"
+            }
+        ],
+        name: "revokeIntent",
+        outputs: [],
+        stateMutability: "nonpayable",
+        type: "function"
+    },
+    {
+        inputs: [
+            {
+                internalType: "bytes32",
+                name: "intentId",
+                type: "bytes32"
+            }
+        ],
+        name: "getIntent",
+        outputs: [
+            {
+                components: [
+                    { internalType: "bytes32", name: "intentId", type: "bytes32" },
+                    { internalType: "address", name: "userAddress", type: "address" },
+                    { internalType: "uint256", name: "creatorAgentId", type: "uint256" },
+                    { internalType: "uint256", name: "targetAgentId", type: "uint256" },
+                    { internalType: "uint256", name: "expiresAt", type: "uint256" },
+                    { internalType: "uint8", name: "status", type: "uint8" },
+                    { internalType: "bool", name: "canRevoke", type: "bool" },
+                    { internalType: "uint256", name: "lockExpiry", type: "uint256" }
+                ],
+                internalType: "struct IntentCoordinator.Intent",
+                name: "",
+                type: "tuple"
+            }
+        ],
+        stateMutability: "view",
+        type: "function"
+    }
+] as const;

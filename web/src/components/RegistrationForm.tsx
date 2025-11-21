@@ -26,21 +26,21 @@ export function RegistrationForm() {
     setValidationMessage('Pinging agent domain...');
 
     try {
-      const response = await fetch(formData.domain);
+      const response = await fetch(formData.domain+'/.well-known/agent-card.json');
       if (!response.ok) throw new Error('Failed to reach domain');
 
       const data = await response.json();
       console.log(data);
-      if (!data.actions || !Array.isArray(data.actions)) {
+      if (!data.skills || !Array.isArray(data.skills)) {
         throw new Error('Response missing "actions" array');
       }
 
-      const isValid = data.actions.some((action: any) =>
-        action.name && action.endpoint && action.method && action.params && action.description
+      const isValid = data.skills.some((action: any) =>
+        action.id && action.name && action.tags && action.description
       );
 
       if (!isValid) {
-        throw new Error('Invalid actions structure. Must contain name, endpoint, method, params, description.');
+        throw new Error('Invalid actions structure. Must contain id, name, tags, description.');
       }
 
       setValidationStatus('success');

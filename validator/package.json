@@ -1,0 +1,24 @@
+{
+    "name": "validator",
+    "version": "1.0.0",
+    "description": "ERC-8004 Validator CLI",
+    "main": "src/index.ts",
+    "scripts": {
+        "dev": "tsx src/index.ts",
+        "build": "tsc",
+        "start": "node dist/index.js"
+    },
+    "dependencies": {
+        "viem": "^2.21.54",
+        "dotenv": "^16.4.7",
+        "prompts": "^2.4.2",
+        "chalk": "^4.1.2",
+        "ora": "^5.4.1"
+    },
+    "devDependencies": {
+        "@types/node": "^22.10.2",
+        "@types/prompts": "^2.4.9",
+        "tsx": "^4.19.2",
+        "typescript": "^5.7.2"
+    }
+}
