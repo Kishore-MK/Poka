@@ -16,7 +16,7 @@ export const discoverAgentTool = tool(
       // Check cache first
       const cached = agentStorage.getCachedAgentMetadata(agentIdBigInt);
       if (cached) {
-        return{
+        return {
           success: true,
           cached: true,
           ...cached,
@@ -36,7 +36,7 @@ export const discoverAgentTool = tool(
           address: IDENTITY_REGISTRY_ADDRESS,
           abi: identityRegistryAbi,
           functionName: 'getMetadata',
-          args: [agentIdBigInt, 'URL'],
+          args: [agentIdBigInt, 'domain'],
         }).catch(() => null),
       ]);
 
@@ -49,7 +49,7 @@ export const discoverAgentTool = tool(
       let capabilities = null;
       if (url) {
         try {
-          const response = await fetch(`${url}/capabilities`);
+          const response = await fetch(`${url}/`);
           if (response.ok) {
             capabilities = await response.json();
           }
@@ -102,10 +102,10 @@ export const callAgentActionTool = tool(
           address: IDENTITY_REGISTRY_ADDRESS,
           abi: identityRegistryAbi,
           functionName: 'getMetadata',
-          args: [agentIdBigInt, 'URL'],
+          args: [agentIdBigInt, 'domain'],
         });
         const url = Buffer.from(urlMetadata.slice(2), 'hex').toString('utf8');
-        
+
         if (!url) {
           return {
             success: false,
@@ -168,7 +168,7 @@ export const getMyAgentIdTool = tool(
   async () => {
     try {
       const myAgentId = agentStorage.getMyAgentId();
-      
+
       if (!myAgentId) {
         return {
           success: false,

@@ -3,9 +3,7 @@ import z from "zod";
 import {
   publicClient,
   agentWalletClient,
-  userWalletClient,
   agentAccount,
-  userAccount,
   waitForTransaction,
   IDENTITY_REGISTRY_ADDRESS,
   REPUTATION_REGISTRY_ADDRESS,
@@ -25,46 +23,7 @@ import { agentStorage } from "../agent/agent-storage.js";
 // ============================================
 // IDENTITY REGISTRY TOOLS
 // ============================================
-
-export const registerAgentTool = tool(
-  async ({ tokenUri }: { tokenUri: string }) => {
-    try {
-      const { request, result: agentId } = await publicClient.simulateContract({
-        address: IDENTITY_REGISTRY_ADDRESS,
-        abi: identityRegistryAbi,
-        functionName: 'register',
-        args: [tokenUri],
-        account: agentAccount,
-      });
-
-      const hash = await agentWalletClient.writeContract(request);
-      const receipt = await waitForTransaction(hash);
-
-      console.log("agentId:", agentId);
-
-      agentStorage.setMyAgentId(agentId);
-
-      return {
-        success: true,
-        agentId: agentId.toString(),
-        txHash: hash,
-        message: `Agent registered with ID: ${agentId}`,
-      };
-    } catch (error: any) {
-      return{
-        success: false,
-        error: error.message,
-      };
-    }
-  },
-  {
-    name: "register_agent",
-    description: "Register this agent in the Identity Registry. Creates an on-chain agent identity with metadata URI. Use AGENT account.",
-    schema: z.object({
-      tokenUri: z.string().describe("URI pointing to agent metadata JSON (e.g., https://example.com/agent.json or ipfs://...)"),
-    }),
-  }
-);
+ 
 
 export const setAgentMetadataTool = tool(
   async ({ agentId, key, value }: { agentId: string; key: string; value: string }) => {
@@ -111,7 +70,7 @@ export const getAgentMetadataTool = tool(
     try {
       const agentIdBigInt = BigInt(agentId);
 
-      const metadata:any = await publicClient.readContract({
+      const metadata: any = await publicClient.readContract({
         address: IDENTITY_REGISTRY_ADDRESS,
         abi: identityRegistryAbi,
         functionName: 'getMetadata',
@@ -196,22 +155,22 @@ export const getAgentInfoTool = tool(
 // ============================================
 
 export const giveFeedbackTool = tool(
-  async ({ agentId, score, tag1, tag2, uri }: { agentId: string; score: number; tag1?: string; tag2?: string; uri?: string }) => {
+  async ({ agentId, score, tag1, tag2, uri, userAddress }: { agentId: string; score: number; tag1?: string; tag2?: string; uri?: string; userAddress: string }) => {
     try {
       const agentIdBigInt = BigInt(agentId);
 
       // Get last feedback index
-      const lastIndex:any = await publicClient.readContract({
+      const lastIndex: any = await publicClient.readContract({
         address: REPUTATION_REGISTRY_ADDRESS,
         abi: reputationRegistryAbi,
         functionName: 'getLastIndex',
-        args: [agentIdBigInt, userAccount.address],
+        args: [agentIdBigInt, userAddress as Hex],
       });
 
-      // Create feedbackAuth (simplified - in production, agent owner should sign)
+      // Create feedbackAuth structure for the user to sign
       const feedbackAuth = {
         agentId: agentIdBigInt,
-        clientAddress: userAccount.address,
+        clientAddress: userAddress as Hex,
         indexLimit: lastIndex + 10n, // Allow multiple feedback
         expiry: BigInt(Math.floor(Date.now() / 1000) + 86400), // 24 hours
         chainId: BigInt(customChain.id),
@@ -219,32 +178,23 @@ export const giveFeedbackTool = tool(
         signerAddress: agentAccount.address,
       };
 
-      const tag1Bytes = (tag1 ? `0x${Buffer.from(tag1).toString('hex').padEnd(64, '0')}` : '0x0000000000000000000000000000000000000000000000000000000000000000') as Hex;
-      const tag2Bytes = (tag2 ? `0x${Buffer.from(tag2).toString('hex').padEnd(64, '0')}` : '0x0000000000000000000000000000000000000000000000000000000000000000') as Hex;
-
-      const { request } = await publicClient.simulateContract({
-        address: REPUTATION_REGISTRY_ADDRESS,
-        abi: reputationRegistryAbi,
-        functionName: 'giveFeedback',
-        args: [
-          agentIdBigInt,
-          feedbackAuth,
-          score,
-          tag1Bytes,
-          tag2Bytes,
-          uri || '',
-          '0x0000000000000000000000000000000000000000000000000000000000000000' as Hex,
-        ],
-        account: userAccount,
-      });
-
-      const hash = await userWalletClient.writeContract(request);
-      await waitForTransaction(hash);
+      // We cannot sign for the user on the server.
+      // We return the data needed for the frontend to prompt the user to sign and send the transaction.
 
       return JSON.stringify({
         success: true,
-        txHash: hash,
-        message: `Feedback given: Score ${score}/100`,
+        action: "request_user_signature",
+        contractAddress: REPUTATION_REGISTRY_ADDRESS,
+        functionName: "giveFeedback",
+        args: {
+          agentId: agentId,
+          feedbackAuth,
+          score,
+          tag1,
+          tag2,
+          uri,
+        },
+        message: `Please sign the feedback transaction in your wallet for Agent ${agentId} (Score: ${score})`,
       });
     } catch (error: any) {
       return JSON.stringify({
@@ -255,13 +205,14 @@ export const giveFeedbackTool = tool(
   },
   {
     name: "give_feedback",
-    description: "Give feedback/rating to an agent after interaction. Use USER account. Score is 0-100.",
+    description: "Prepare a feedback transaction for the user to sign. Requires userAddress.",
     schema: z.object({
       agentId: z.string().describe("Agent ID to rate"),
       score: z.number().min(0).max(100).describe("Feedback score (0-100)"),
       tag1: z.string().optional().describe("Optional tag 1"),
       tag2: z.string().optional().describe("Optional tag 2"),
       uri: z.string().optional().describe("Optional URI for detailed feedback"),
+      userAddress: z.string().describe("The user's wallet address (client address)"),
     }),
   }
 );
@@ -271,7 +222,7 @@ export const getAgentReputationTool = tool(
     try {
       const agentIdBigInt = BigInt(agentId);
 
-      const summary:any = await publicClient.readContract({
+      const summary: any = await publicClient.readContract({
         address: REPUTATION_REGISTRY_ADDRESS,
         abi: reputationRegistryAbi,
         functionName: 'getSummary',
@@ -357,17 +308,17 @@ export const requestValidationTool = tool(
 // ============================================
 
 export const createIntentTool = tool(
-  async ({ creatorAgentId, targetAgentId, expiresInSeconds }: { creatorAgentId: string; targetAgentId: string; expiresInSeconds: number }) => {
+  async ({ creatorAgentId, targetAgentId, expiresInSeconds, userAddress }: { creatorAgentId: string; targetAgentId: string; expiresInSeconds: number; userAddress: string }) => {
     try {
       const creatorAgentIdBigInt = BigInt(creatorAgentId);
       const targetAgentIdBigInt = BigInt(targetAgentId);
 
       // Get user nonce
-      const nonce : any = await publicClient.readContract({
+      const nonce: any = await publicClient.readContract({
         address: INTENT_COORDINATOR_ADDRESS,
         abi: intentCoordinatorAbi,
         functionName: 'getUserNonce',
-        args: [userAccount.address],
+        args: [userAddress as Hex],
       });
 
       const newNonce = nonce + 1n;
@@ -377,40 +328,25 @@ export const createIntentTool = tool(
       const messageHash = keccak256(
         encodePacked(
           ['address', 'uint256', 'uint256', 'uint256', 'uint256', 'uint256', 'address'],
-          [userAccount.address, creatorAgentIdBigInt, targetAgentIdBigInt, newNonce, expiresAt, BigInt(customChain.id), INTENT_COORDINATOR_ADDRESS]
+          [userAddress as Hex, creatorAgentIdBigInt, targetAgentIdBigInt, newNonce, expiresAt, BigInt(customChain.id), INTENT_COORDINATOR_ADDRESS]
         )
       );
 
-      // Sign with user account
-      const signature = await userAccount.signMessage({
-        message: { raw: messageHash },
-      });
-
-      // Create intent on-chain
-      const { request } = await publicClient.simulateContract({
-        address: INTENT_COORDINATOR_ADDRESS,
-        abi: intentCoordinatorAbi,
-        functionName: 'createIntent',
-        args: [creatorAgentIdBigInt, targetAgentIdBigInt, expiresAt, userAccount.address, newNonce, signature],
-        account: agentAccount,
-      });
-
-      const hash = await agentWalletClient.writeContract(request);
-      const receipt = await waitForTransaction(hash);
-
-      // Parse intentId from event logs
-      const log = receipt.logs.find(
-        (log) => log.address.toLowerCase() === INTENT_COORDINATOR_ADDRESS.toLowerCase()
-      );
-
-      const intentId = log?.topics[1] || '0x0' as Hex;
-
+      // Return data for user signature
       return {
         success: true,
-        intentId: intentId,
-        txHash: hash,
-        expiresAt: expiresAt.toString(),
-        message: 'Intent created successfully',
+        action: "request_user_signature",
+        contractAddress: INTENT_COORDINATOR_ADDRESS,
+        functionName: "createIntent",
+        args: {
+          creatorAgentId,
+          targetAgentId,
+          expiresInSeconds,
+          userAddress,
+          nonce: newNonce.toString(),
+          messageHash,
+        },
+        message: 'Please sign the intent creation transaction in your wallet',
       };
     } catch (error: any) {
       return {
@@ -426,6 +362,7 @@ export const createIntentTool = tool(
       creatorAgentId: z.string().describe("Creator agent ID (usually your own agent)"),
       targetAgentId: z.string().describe("Target agent ID to interact with"),
       expiresInSeconds: z.number().default(300).describe("Intent expiration time in seconds (default 300 = 5 minutes)"),
+      userAddress: z.string().describe("The user's wallet address"),
     }),
   }
 );
@@ -440,7 +377,7 @@ export const lockRevocationTool = tool(
         args: [intentId as Hex],
         account: agentAccount,
       });
- 
+
       await waitForTransaction(hash);
 
       return {
@@ -536,23 +473,19 @@ export const markIntentFailedTool = tool(
 );
 
 export const revokeIntentTool = tool(
-  async ({ intentId }: { intentId: string }) => {
+  async ({ intentId, userAddress }: { intentId: string; userAddress: string }) => {
     try {
-      const { request } = await publicClient.simulateContract({
-        address: INTENT_COORDINATOR_ADDRESS,
-        abi: intentCoordinatorAbi,
-        functionName: 'revokeIntent',
-        args: [intentId as Hex],
-        account: userAccount,
-      });
-
-      const hash = await userWalletClient.writeContract(request);
-      await waitForTransaction(hash);
-
+      // We cannot sign for the user. Return request for signature.
       return {
         success: true,
-        txHash: hash,
-        message: 'Intent revoked',
+        action: "request_user_signature",
+        contractAddress: INTENT_COORDINATOR_ADDRESS,
+        functionName: "revokeIntent",
+        args: {
+          intentId,
+          userAddress,
+        },
+        message: 'Please sign the intent revocation transaction in your wallet',
       };
     } catch (error: any) {
       return {
@@ -566,6 +499,7 @@ export const revokeIntentTool = tool(
     description: "Revoke an active intent before execution. Use USER account.",
     schema: z.object({
       intentId: z.string().describe("Intent ID to revoke"),
+      userAddress: z.string().describe("The user's wallet address"),
     }),
   }
 );
@@ -573,7 +507,7 @@ export const revokeIntentTool = tool(
 export const getIntentInfoTool = tool(
   async ({ intentId }: { intentId: string }) => {
     try {
-      const intentInfo:any = await publicClient.readContract({
+      const intentInfo: any = await publicClient.readContract({
         address: INTENT_COORDINATOR_ADDRESS,
         abi: intentCoordinatorAbi,
         functionName: 'getIntent',

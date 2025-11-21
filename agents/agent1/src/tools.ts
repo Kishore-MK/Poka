@@ -1,6 +1,5 @@
 import { DynamicStructuredTool } from "@langchain/core/tools";
-import {
-  registerAgentTool,
+import { 
   setAgentMetadataTool,
   getAgentMetadataTool,
   getAgentInfoTool,
@@ -21,20 +20,19 @@ import {
 } from "./agent/agent-interaction-tools.js";
 
 export const tools: DynamicStructuredTool[] = [
-  // Identity Registry
-  registerAgentTool,
+  // Identity Registry 
   setAgentMetadataTool,
   getAgentMetadataTool,
   getAgentInfoTool,
   getMyAgentIdTool,
-  
+
   // Reputation Registry
   giveFeedbackTool,
   getAgentReputationTool,
-  
+
   // Validation Registry
   requestValidationTool,
-  
+
   // Intent Coordinator
   createIntentTool,
   lockRevocationTool,
@@ -42,7 +40,7 @@ export const tools: DynamicStructuredTool[] = [
   markIntentFailedTool,
   revokeIntentTool,
   getIntentInfoTool,
-  
+
   // Agent-to-Agent Interaction
   discoverAgentTool,
   callAgentActionTool,

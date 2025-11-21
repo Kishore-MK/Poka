@@ -6,9 +6,10 @@ import * as dotenv from 'dotenv';
 import {
   agentWalletClient,
   agentAccount,
-  INTENT_COORDINATOR_ADDRESS,
+  INTENT_COORDINATOR_ADDRESS, publicClient, IDENTITY_REGISTRY_ADDRESS,
 } from '../contract/contract-client.js';
-import { intentCoordinatorAbi } from '../contract/contract-abis.js';
+import { intentCoordinatorAbi,identityRegistryAbi } from '../contract/contract-abis.js';
+import { agent } from '../agent-logic.js';
 
 dotenv.config();
 
@@ -16,10 +17,49 @@ const app = new Hono();
 
 app.use('/*', cors());
 
+// Chat endpoint
+app.post('/chat', async (c) => {
+  const body = await c.req.json();
+  const { message, threadId = 'conversation-1' } = body;
+
+  if (!message) {
+    return c.json({ error: 'Message is required' }, 400);
+  }
+
+  try {
+    const config = {
+      configurable: { thread_id: threadId }
+    };
+
+    const agentResponse = await agent.invoke(
+      { messages: [{ role: "user", content: message }] },
+      config
+    );
+
+    const lastMessage = agentResponse.messages[agentResponse.messages.length - 1];
+    const toolCalls = lastMessage.tool_calls || [];
+
+    return c.json({
+      response: lastMessage.content,
+      toolCalls: toolCalls,
+      threadId
+    });
+  } catch (error: any) {
+    console.error('Chat error:', error);
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+// Get executed intents
+app.get('/intents', (c) => {
+  const intents = agentStorage.getAllExecutions();
+  return c.json({ intents });
+});
+
 // Agent capabilities endpoint
 app.get('/', (c) => {
   const capabilities = {
-    agentId: agentStorage.getMyAgentId()?.toString() || 'Not registered', 
+    agentId: agentStorage.getMyAgentId()?.toString() || 'Not registered',
     actions: [
       {
         name: 'calculate',
@@ -53,7 +93,7 @@ app.post('/actions/calculate', async (c) => {
   console.log('\n=== Calculate Action Called ===');
   const intentId = c.req.header('x-intent-id') as Hex;
   console.log(`Intent ID: ${intentId}`);
-  
+
   try {
     if (!intentId) {
       console.log('❌ Missing intent ID');
@@ -75,7 +115,7 @@ app.post('/actions/calculate', async (c) => {
       console.log(`✅ Calculation result: ${expression} = ${result}`);
     } catch (error) {
       console.log('❌ Invalid expression:', error);
-      
+
       // Mark failed on-chain immediately
       console.log('📝 Marking intent as failed on-chain...');
       await agentWalletClient.writeContract({
@@ -86,18 +126,10 @@ app.post('/actions/calculate', async (c) => {
         account: agentAccount,
       });
       console.log('✅ Intent marked as failed on-chain');
-      
+
       return c.json({ success: false, error: 'Invalid expression', intentId }, 400);
     }
 
-    // Store execution result
-    agentStorage.storeIntentExecution({
-      intentId,
-      result: { expression, answer: result },
-      timestamp: Date.now(),
-      success: true,
-    });
-    console.log('✅ Stored execution result');
 
     // Mark executed on-chain immediately
     console.log('📝 Marking intent as executed on-chain...');
@@ -110,6 +142,15 @@ app.post('/actions/calculate', async (c) => {
     });
     console.log(`✅ Intent marked as executed on-chain. Tx: ${hash}`);
 
+    // Update execution result with transaction hash
+    agentStorage.storeIntentExecution({
+      intentId,
+      result: { expression, answer: result },
+      timestamp: Date.now(),
+      success: true,
+      transactionHash: hash,
+    });
+
     return c.json({
       success: true,
       intentId,
@@ -118,7 +159,7 @@ app.post('/actions/calculate', async (c) => {
     });
   } catch (error: any) {
     console.log('❌ Error:', error.message);
-    
+
     // Mark failed on-chain immediately
     try {
       console.log('📝 Marking intent as failed on-chain...');
@@ -133,7 +174,7 @@ app.post('/actions/calculate', async (c) => {
     } catch (onChainError: any) {
       console.log('❌ Failed to mark intent as failed on-chain:', onChainError.message);
     }
-    
+
     return c.json({ success: false, error: error.message }, 500);
   }
 });
@@ -143,7 +184,7 @@ app.post('/actions/echo', async (c) => {
   console.log('\n=== Echo Action Called ===');
   const intentId = c.req.header('x-intent-id') as Hex;
   console.log(`Intent ID: ${intentId}`);
-  
+
   try {
     if (!intentId) {
       console.log('❌ Missing intent ID');
@@ -162,14 +203,6 @@ app.post('/actions/echo', async (c) => {
     const result = { echo: message };
     console.log(`✅ Echo result:`, result);
 
-    // Store execution result
-    agentStorage.storeIntentExecution({
-      intentId,
-      result,
-      timestamp: Date.now(),
-      success: true,
-    });
-    console.log('✅ Stored execution result');
 
     // Mark executed on-chain immediately
     console.log('📝 Marking intent as executed on-chain...');
@@ -182,6 +215,15 @@ app.post('/actions/echo', async (c) => {
     });
     console.log(`✅ Intent marked as executed on-chain. Tx: ${hash}`);
 
+    // Update execution result with transaction hash
+    agentStorage.storeIntentExecution({
+      intentId,
+      result,
+      timestamp: Date.now(),
+      success: true,
+      transactionHash: hash,
+    });
+
     return c.json({
       success: true,
       intentId,
@@ -190,7 +232,7 @@ app.post('/actions/echo', async (c) => {
     });
   } catch (error: any) {
     console.log('❌ Error:', error.message);
-    
+
     // Mark failed on-chain immediately
     try {
       console.log('📝 Marking intent as failed on-chain...');
@@ -205,7 +247,7 @@ app.post('/actions/echo', async (c) => {
     } catch (onChainError: any) {
       console.log('❌ Failed to mark intent as failed on-chain:', onChainError.message);
     }
-    
+
     return c.json({ success: false, error: error.message }, 500);
   }
 });
@@ -215,7 +257,7 @@ app.post('/actions/generate_text', async (c) => {
   console.log('\n=== Generate Text Action Called ===');
   const intentId = c.req.header('x-intent-id') as Hex;
   console.log(`Intent ID: ${intentId}`);
-  
+
   try {
     if (!intentId) {
       console.log('❌ Missing intent ID');
@@ -237,14 +279,6 @@ app.post('/actions/generate_text', async (c) => {
     };
     console.log(`✅ Generated text result:`, result);
 
-    // Store execution result
-    agentStorage.storeIntentExecution({
-      intentId,
-      result,
-      timestamp: Date.now(),
-      success: true,
-    });
-    console.log('✅ Stored execution result');
 
     // Mark executed on-chain immediately
     console.log('📝 Marking intent as executed on-chain...');
@@ -257,6 +291,15 @@ app.post('/actions/generate_text', async (c) => {
     });
     console.log(`✅ Intent marked as executed on-chain. Tx: ${hash}`);
 
+    // Update execution result with transaction hash
+    agentStorage.storeIntentExecution({
+      intentId,
+      result,
+      timestamp: Date.now(),
+      success: true,
+      transactionHash: hash,
+    });
+
     return c.json({
       success: true,
       intentId,
@@ -265,7 +308,7 @@ app.post('/actions/generate_text', async (c) => {
     });
   } catch (error: any) {
     console.log('❌ Error:', error.message);
-    
+
     // Mark failed on-chain immediately
     try {
       console.log('📝 Marking intent as failed on-chain...');
@@ -280,7 +323,7 @@ app.post('/actions/generate_text', async (c) => {
     } catch (onChainError: any) {
       console.log('❌ Failed to mark intent as failed on-chain:', onChainError.message);
     }
-    
+
     return c.json({ success: false, error: error.message }, 500);
   }
 });
@@ -290,7 +333,7 @@ app.get('/verify-intent/:intentId', (c) => {
   console.log('\n=== Verify Intent Called ===');
   const intentId = c.req.param('intentId') as Hex;
   console.log(`Intent ID: ${intentId}`);
-  
+
   const executionData = agentStorage.getIntentExecution(intentId);
 
   if (!executionData) {
@@ -311,6 +354,39 @@ app.get('/health', (c) => {
 });
 
 export default app;
+
+async function checkRegistration() {
+  console.log('🔍 Checking registration status...');
+  try {
+    const balance = await publicClient.readContract({
+      address: IDENTITY_REGISTRY_ADDRESS,
+      abi: identityRegistryAbi,
+      functionName: 'balanceOf',
+      args: [agentAccount.address],
+    });
+
+    if (balance > 0n) {
+      const agentId = await publicClient.readContract({
+        address: IDENTITY_REGISTRY_ADDRESS,
+        abi: identityRegistryAbi,
+        functionName: 'tokenOfOwnerByIndex',
+        args: [agentAccount.address, 0n],
+      });
+
+      console.log(`✅ Agent is registered! Agent ID: ${agentId}`);
+      agentStorage.setMyAgentId(agentId);
+    } else {
+      console.log('ℹ️ Agent is not registered yet.');
+    }
+  } catch (error) {
+    console.error('❌ Failed to check registration:', error);
+  }
+}
+
+
+// Run check immediately and then every 30 seconds
+checkRegistration();
+setInterval(checkRegistration, 30000);
 
 // Start server
 const port = Number(process.env.AGENT_PORT || 3000);

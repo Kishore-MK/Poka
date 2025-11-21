@@ -7,6 +7,7 @@ export interface IntentExecutionData {
   success: boolean;
   targetAgentId?: bigint;
   creatorAgentId?: bigint;
+  transactionHash?: string;
 }
 
 export interface AgentMetadata {
@@ -30,6 +31,10 @@ export class AgentStorage {
   // Get stored intent execution
   getIntentExecution(intentId: Hex): IntentExecutionData | undefined {
     return this.executedIntents.get(intentId);
+  }
+
+  getAllExecutions(): IntentExecutionData[] {
+    return Array.from(this.executedIntents.values()).sort((a, b) => b.timestamp - a.timestamp);
   }
 
   // Cache agent metadata

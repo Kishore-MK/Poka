@@ -1,6 +1,7 @@
 import { supabase } from '@/lib/supabase';
 import { FeedbackList } from '@/components/FeedbackList';
-import { Star, ShieldCheck, Globe, User } from 'lucide-react';
+import { Star, ShieldCheck, Globe, User, Bot } from 'lucide-react';
+import { ChatInterface } from '@/components/ChatInterface';
 import { notFound } from 'next/navigation';
 import Image from 'next/image';
 import { AgentActions } from '@/components/AgentActions';
@@ -92,6 +93,13 @@ export default async function AgentDetailsPage({ params }: { params: { id: strin
       <div className="grid md:grid-cols-3 gap-8">
         {/* Main Content */}
         <div className="md:col-span-2 space-y-8">
+          {agent.domain && (
+            <section>
+               
+              <ChatInterface agentUrl={agent.domain} agentName={agent.name} />
+            </section>
+          )}
+
           <section>
             <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
               <Star className="w-5 h-5 text-indigo-400" />
